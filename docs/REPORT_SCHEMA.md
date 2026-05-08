@@ -192,3 +192,14 @@ Each fairness metric in `summary.primary_metrics` carries a `status`
 - **poor**: at least one fail
 
 Headline score is computed as:
+
+```
+headline_score = mean(
+    1.0 if status == "pass" else
+    0.5 if status == "warn" else
+    0.0
+    for metric in summary.primary_metrics
+)
+```
+
+Range: 0.0 (all fail) to 1.0 (all pass). Higher is better.

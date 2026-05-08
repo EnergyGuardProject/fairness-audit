@@ -1,0 +1,45 @@
+version: "3.9"
+
+# Local development stack.
+# Mirrors the robustness-service docker-compose pattern (Alex Tzortzis).
+# MLflow is present for future v1.1 integration — the fairness service does
+# NOT log to MLflow in v1; the container is here for shared infrastructure.
+
+services:
+  fairness-audit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: energyguard/fairness-audit:dev
+    ports:
+      - "8080:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - ./runs:/app/runs
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    ports:
+      - "5001:5000"
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+    volumes:
+      - mlflow-data:/mlflow
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  mlflow-data:

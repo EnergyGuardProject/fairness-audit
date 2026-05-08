@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fairness Audit Report — {{ run_name }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      color: #1f2937;
+      background: #f9fafb;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25rem; }
+    .meta { color: #6b7280; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.5rem;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .headline-score {
+      font-size: 2.5rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .label-good     { color: #16a34a; }
+    .label-moderate { color: #d97706; }
+    .label-poor     { color: #dc2626; }
+    .status-pass { color: #16a34a; font-weight: 600; }
+    .status-warn { color: #d97706; font-weight: 600; }
+    .status-fail { color: #dc2626; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th { text-align: left; padding: 0.5rem 0.75rem; background: #f3f4f6; font-weight: 600; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; }
+    tr:last-child td { border-bottom: none; }
+    .chart-container { margin-bottom: 1.5rem; }
+    .severity-info    { color: #0369a1; }
+    .severity-warning { color: #d97706; }
+    .severity-error   { color: #dc2626; }
+    .rec-high   { border-left: 3px solid #dc2626; padding-left: 0.75rem; margin-bottom: 1rem; }
+    .rec-medium { border-left: 3px solid #d97706; padding-left: 0.75rem; margin-bottom: 1rem; }
+    .rec-low    { border-left: 3px solid #16a34a; padding-left: 0.75rem; margin-bottom: 1rem; }
+    footer { margin-top: 3rem; color: #9ca3af; font-size: 0.8rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>EnergyGuard Fairness Audit Report</h1>
+  <div class="meta">
+    <strong>Run:</strong> {{ run_name }} &nbsp;|&nbsp;
+    <strong>Generated:</strong> {{ timestamp_utc }} &nbsp;|&nbsp;
+    <strong>Service:</strong> fairness-audit v{{ service_version }}
+  </div>
+  <div class="meta">
+    <strong>Dataset:</strong> {{ dataset_uri }} &nbsp;|&nbsp;
+    <strong>Samples:</strong> {{ sample_count | int }} &nbsp;|&nbsp;
+    <strong>Model backend:</strong> {{ model_backend }}
+  </div>
+</header>
+
+{# ── Summary card ─────────────────────────────────────────────────────────── #}
+<section>
+  <h2>Summary</h2>
+  <div class="card">
+    <div class="headline-score label-{{ headline_label }}">
+      {{ "%.2f" | format(headline_score) }}
+    </div>
+    <div>Headline label: <span class="label-{{ headline_label }}">{{ headline_label | upper }}</span></div>
+
+    {# Plotly gauge injected here by html_report.py #}
+    {% if headline_gauge_html %}
+    <div class="chart-container">{{ headline_gauge_html | safe }}</div>
+    {% endif %}
+  </div>
+</section>
+
+{# ── Primary metrics table ─────────────────────────────────────────────────── #}
+<section>
+  <h2>Primary Metrics</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Value</th>
+          <th>Threshold (fail)</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for m in primary_metrics %}
+        <tr>
+          <td>{{ m.label }}</td>
+          <td>{{ "%.4f" | format(m.value) }}</td>
+          <td>{{ m.threshold }}</td>
+          <td class="status-{{ m.status }}">{{ m.status | upper }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── Primary chart: accuracy by group ─────────────────────────────────────── #}
+<section>
+  <h2>{{ primary_chart_title | default("Accuracy by Group") }}</h2>
+  <div class="card chart-container">
+    {{ primary_chart_html | safe }}
+  </div>
+</section>
+
+{# ── Secondary chart: selection rate by group ─────────────────────────────── #}
+{% if secondary_chart_html %}
+<section>
+  <h2>{{ secondary_chart_title | default("Selection Rate by Group") }}</h2>
+  <div class="card chart-container">
+    {{ secondary_chart_html | safe }}
+  </div>
+</section>
+{% endif %}
+
+{# ── Tertiary chart: disparity heatmap (≥2 sensitive features) ────────────── #}
+{% if tertiary_chart_html %}
+<section>
+  <h2>{{ tertiary_chart_title | default("Disparity Heatmap") }}</h2>
+  <div class="card chart-container">
+    {{ tertiary_chart_html | safe }}
+  </div>
+</section>
+{% endif %}
+
+{# ── Subgroup breakdown table ─────────────────────────────────────────────── #}
+<section>
+  <h2>Subgroup Breakdown</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Group</th>
+          <th>Accuracy</th>
+          <th>Selection Rate</th>
+          <th>FPR</th>
+          <th>FNR</th>
+          <th>N</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in subgroup_breakdown %}
+        <tr>
+          <td>{{ row.row_label }}</td>
+          <td>{{ "%.3f" | format(row.metrics.accuracy) }}</td>
+          <td>{{ "%.3f" | format(row.metrics.selection_rate) }}</td>
+          <td>
+            {% if row.metrics.false_positive_rate is not none %}
+              {{ "%.3f" | format(row.metrics.false_positive_rate) }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if row.metrics.false_negative_rate is not none %}
+              {{ "%.3f" | format(row.metrics.false_negative_rate) }}
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ row.n_samples }}</td>
+          <td class="status-{{ row.status }}">{{ row.status | upper }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── Warnings ─────────────────────────────────────────────────────────────── #}
+{% if warnings %}
+<section>
+  <h2>Warnings</h2>
+  <div class="card">
+    <ul style="margin:0; padding-left:1.25rem;">
+    {% for w in warnings %}
+      <li class="severity-{{ w.severity }}">
+        <strong>[{{ w.severity | upper }}] {{ w.code }}:</strong> {{ w.message }}
+      </li>
+    {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+
+{# ── Recommendations ──────────────────────────────────────────────────────── #}
+{% if recommendations %}
+<section>
+  <h2>Recommendations</h2>
+  {% for r in recommendations %}
+  <div class="card rec-{{ r.priority }}">
+    <p style="margin:0 0 0.25rem;"><strong>[{{ r.priority | upper }}]</strong> {{ r.action }}</p>
+    <p style="margin:0 0 0.5rem; color:#6b7280; font-size:0.9rem;">{{ r.rationale }}</p>
+    {% if r.external_refs %}
+    <p style="margin:0; font-size:0.85rem;">
+      References:
+      {% for ref in r.external_refs %}
+        <a href="{{ ref }}" target="_blank" rel="noopener noreferrer">{{ ref }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<footer>
+  Generated by EnergyGuard Fairness Audit Service v{{ service_version }}
+  &nbsp;|&nbsp; run_id: {{ run_id }}
+  &nbsp;|&nbsp; Horizon Europe GA 101172705
+</footer>
+
+</body>
+</html>

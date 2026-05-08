@@ -98,14 +98,16 @@ fairness-audit/
 │   └── QUICKSTART.md
 ├── examples/
 │   ├── configs/
-│   │   └── adult_classification.yaml
+│   │   └── energy_burden.yaml
 │   ├── data/
-│   │   └── adult.csv
+│   │   └── energy_burden_synthetic.csv
+│   ├── models/
+│   │   └── baseline_logreg.joblib
 │   └── scripts/
+│       ├── generate_synthetic_energy_burden.py
+│       └── train_baseline_model.py
 ├── fairness-backend/
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── setup.py
 │   ├── app/
 │   │   ├── __init__.py
 │   │   └── main.py
@@ -129,6 +131,7 @@ fairness-audit/
 │       │   ├── __init__.py
 │       │   ├── compute.py
 │       │   ├── classification.py
+│       │   ├── thresholds.py
 │       │   └── user_metrics.py
 │       └── reporting/
 │           ├── __init__.py
@@ -137,6 +140,7 @@ fairness-audit/
 │               └── report.html.j2
 └── tests/
     ├── fixtures/
+    │   └── report_schema_validator.py
     ├── test_config.py
     ├── test_engine.py
     ├── test_metrics.py

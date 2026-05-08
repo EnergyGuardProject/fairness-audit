@@ -1,0 +1,27 @@
+run_name: "Energy Burden Synthetic Audit v1"
+description: >
+  Fairness audit of baseline LogisticRegression trained on the synthetic EU
+  energy burden dataset. Sensitive attributes: income_decile, country,
+  age_head_band. Expects DPD and EOD to fail (disparities injected by design).
+
+dataset:
+  path: examples/data/energy_burden_synthetic.csv
+  format: csv
+  target_column: is_energy_burdened
+
+model:
+  path: examples/models/baseline_logreg.joblib
+  backend: sklearn
+
+fairness:
+  sensitive_features:
+    - income_decile
+    - country
+    - age_head_band
+  fairness_metrics:
+    - demographic_parity_difference
+    - equalized_odds_difference
+    - selection_rate_ratio
+  base_metric: accuracy
+  intersectional: false
+  parity_thresholds: {}
