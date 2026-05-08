@@ -99,6 +99,14 @@ open report.html
 
 ## Docker (full local stack)
 
+### Start
+
+```bash
+docker compose up --build -d
+```
+
+Or use the helper script:
+
 ```bash
 ./start_local.sh
 ```
@@ -106,11 +114,45 @@ open report.html
 Services:
 | Service | URL |
 |---------|-----|
-| Fairness Audit API | http://localhost:8080 |
-| Swagger UI | http://localhost:8080/docs |
-| MLflow UI | http://localhost:5001 |
+| Fairness Audit API | http://localhost:9006 |
+| Swagger UI | http://localhost:9006/docs |
+| MLflow UI | http://localhost:9007 |
 
-Stop: `docker compose down`
+### Health check
+
+```bash
+curl http://localhost:9006/health
+# → {"status":"ok"}
+```
+
+### Run a test audit against the container
+
+```bash
+# 1. Submit evaluation
+JOB=$(curl -s -X POST http://localhost:9006/api/evaluations \
+  -F "model_file=@examples/models/baseline_logreg.joblib" \
+  -F "dataset_file=@examples/data/energy_burden_synthetic.csv" \
+  -F "config=@examples/configs/energy_burden.yaml" | python -m json.tool)
+echo "$JOB"
+JOB_ID=$(echo "$JOB" | python -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+
+# 2. Poll until complete
+until [ "$(curl -s http://localhost:9006/api/evaluations/$JOB_ID/status | python -c "import sys,json; print(json.load(sys.stdin)['status'])")" = "ok" ]; do
+  echo "waiting..."; sleep 2
+done
+
+# 3. Fetch metrics
+curl -s http://localhost:9006/api/evaluations/$JOB_ID/metrics | python -m json.tool
+
+# 4. Fetch HTML report
+curl -s http://localhost:9006/api/evaluations/$JOB_ID/report -o report.html
+```
+
+### Stop
+
+```bash
+docker compose down
+```
 
 ---
 

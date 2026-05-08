@@ -1,0 +1,15 @@
+.git
+.gitignore
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+.env
+runs/
+tmp_uploads/
+mlflow_store/
+.claude/
+tests/

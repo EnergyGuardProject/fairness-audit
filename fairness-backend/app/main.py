@@ -136,6 +136,12 @@ def _evaluation_task(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@app.get("/health", summary="Health check")
+async def health() -> dict[str, str]:
+    """Return service liveness status."""
+    return {"status": "ok"}
+
+
 @app.post(
     "/api/evaluations",
     response_model=EvaluationCreateResponse,

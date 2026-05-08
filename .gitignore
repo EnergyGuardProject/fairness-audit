@@ -220,6 +220,8 @@ __marimo__/
 # Project-specific
 runs/
 tmp_uploads/
+mlflow_store/*
+!mlflow_store/.gitkeep
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json

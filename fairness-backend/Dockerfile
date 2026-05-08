@@ -10,7 +10,7 @@ WORKDIR /build
 RUN pip install --no-cache-dir uv
 COPY pyproject.toml README.md ./
 COPY fairness-backend/ ./fairness-backend/
-RUN uv pip install --system --no-dev .
+RUN uv pip install --system .
 
 FROM python:3.11-slim AS runtime
 WORKDIR /app
@@ -20,5 +20,5 @@ COPY --from=build /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 RUN mkdir -p /app/runs /app/tmp_uploads
 VOLUME /app/runs
 ENV PYTHONUNBUFFERED=1
-EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 9006
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9006"]

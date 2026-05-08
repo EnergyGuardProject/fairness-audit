@@ -16,7 +16,7 @@ COPY pyproject.toml README.md ./
 COPY fairness-backend/ ./fairness-backend/
 
 # Install runtime deps only (no dev extras)
-RUN uv pip install --system --no-dev .
+RUN uv pip install --system .
 
 # ── Stage 2: lean runtime image ───────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
@@ -34,6 +34,6 @@ RUN mkdir -p /app/runs /app/tmp_uploads
 VOLUME /app/runs
 
 ENV PYTHONUNBUFFERED=1
-EXPOSE 8000
+EXPOSE 9006
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9006"]
