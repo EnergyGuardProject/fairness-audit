@@ -220,3 +220,7 @@ __marimo__/
 # Project-specific
 runs/
 tmp_uploads/
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+.claude/worktrees/
