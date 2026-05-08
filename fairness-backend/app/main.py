@@ -1,14 +1,21 @@
 """FastAPI application for the EnergyGuard Fairness Audit Service."""
 from __future__ import annotations
 
+import json
 import logging
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
-from fastapi import FastAPI, HTTPException, UploadFile
+import yaml
+from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+from runner.config.models import RunConfig
+from runner.pipeline import run_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +26,8 @@ TMP_DIR = Path("tmp_uploads")
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Create required directories on startup."""
-    RUNS_DIR.mkdir(exist_ok=True)
-    TMP_DIR.mkdir(exist_ok=True)
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
     yield
 
 
@@ -37,13 +44,45 @@ app = FastAPI(
 )
 
 
+def _generate_job_id() -> str:
+    # Intentionally duplicated from runner/pipeline.py.
+    # Extract to runner/utils.py if a third caller appears.
+    now = datetime.now(timezone.utc)
+    return f"{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+
+def _write_status(job_dir: Path, payload: dict[str, Any]) -> None:
+    (job_dir / "status.json").write_text(
+        json.dumps(payload, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def _read_status(job_id: str) -> dict[str, Any]:
+    """Return parsed status.json for job_id; raise HTTP 404 if not found.
+
+    Args:
+        job_id: Job identifier.
+
+    Returns:
+        Parsed status dict.
+
+    Raises:
+        HTTPException 404: If the job directory or status file does not exist.
+    """
+    status_path = RUNS_DIR / job_id / "status.json"
+    if not status_path.exists():
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    return json.loads(status_path.read_text(encoding="utf-8"))
+
+
 # ── Response models ────────────────────────────────────────────────────────────
 
 class EvaluationCreateResponse(BaseModel):
-    """Returned immediately after a job is accepted."""
+    """Returned immediately after a job is accepted (HTTP 202)."""
 
     job_id: str
-    status: str  # "pending"
+    status: str  # always "pending"
 
 
 class JobStatusResponse(BaseModel):
@@ -57,10 +96,42 @@ class JobStatusResponse(BaseModel):
 
 
 class JobConflictResponse(BaseModel):
-    """Returned as 409 body so the frontend avoids a second status call."""
+    """409 detail body — lets the frontend skip a redundant status call."""
 
     job_id: str
-    status: str  # running | pending
+    status: str  # pending | running
+
+
+# ── Background task ────────────────────────────────────────────────────────────
+
+def _evaluation_task(
+    config: RunConfig,
+    job_dir: Path,
+    job_id: str,
+    tmp_model: Path,
+    tmp_dataset: Path,
+) -> None:
+    """Run the evaluation pipeline, then clean up uploaded temp files.
+
+    Args:
+        config: Validated RunConfig with injected temp-file paths.
+        job_dir: Job output directory under RUNS_DIR.
+        job_id: Job identifier string.
+        tmp_model: Path to the temp model file (deleted after evaluation).
+        tmp_dataset: Path to the temp dataset file (deleted after evaluation).
+    """
+    try:
+        run_evaluation(config, job_dir, job_id)
+    finally:
+        for p in (tmp_model, tmp_dataset):
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:
+                pass
+        try:
+            tmp_model.parent.rmdir()
+        except Exception:
+            pass
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -72,29 +143,74 @@ class JobConflictResponse(BaseModel):
     summary="Submit a new fairness evaluation job",
 )
 async def create_evaluation(
+    background_tasks: BackgroundTasks,
     model_file: UploadFile,
     dataset_file: UploadFile,
     config: UploadFile,
 ) -> EvaluationCreateResponse:
     """Accept a model, dataset, and YAML config; enqueue a background evaluation.
 
-    Uploaded files are written to a temp directory first. Config path fields are
-    overwritten with the resolved temp paths before RunConfig validation. Returns
-    the job_id and initial status ("pending").
+    Uploaded files are written to TMP_DIR/<job_id>/. The config's model.path
+    and dataset.path are overridden with the resolved temp paths before
+    RunConfig validation.
 
     Args:
+        background_tasks: FastAPI BackgroundTasks injected by the framework.
         model_file: Trained sklearn Pipeline (.joblib).
         dataset_file: Tabular dataset (.csv).
-        config: YAML RunConfig. model.path and dataset.path are ignored — the
-            uploaded file paths are injected automatically.
+        config: YAML RunConfig. model.path and dataset.path are ignored —
+            the uploaded file paths are injected automatically.
 
     Returns:
         EvaluationCreateResponse with job_id and "pending" status.
 
     Raises:
+        HTTPException 400: If the YAML config cannot be parsed.
         HTTPException 422: If the merged RunConfig fails Pydantic validation.
     """
-    raise NotImplementedError
+    job_id = _generate_job_id()
+    job_dir = RUNS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_job_dir = TMP_DIR / job_id
+    tmp_job_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_model_path = tmp_job_dir / (model_file.filename or "model.joblib")
+    tmp_dataset_path = tmp_job_dir / (dataset_file.filename or "dataset.csv")
+    tmp_model_path.write_bytes(await model_file.read())
+    tmp_dataset_path.write_bytes(await dataset_file.read())
+
+    config_bytes = await config.read()
+    try:
+        raw = yaml.safe_load(config_bytes.decode("utf-8"))
+    except yaml.YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid YAML: {exc}") from exc
+
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=400, detail="Config YAML must be a mapping")
+
+    raw.setdefault("dataset", {})["path"] = str(tmp_dataset_path)
+    raw.setdefault("model", {})["path"] = str(tmp_model_path)
+
+    try:
+        run_config = RunConfig.model_validate(raw)
+    except ValidationError as exc:
+        # exc.errors() may contain non-serializable ctx.error (ValueError) objects.
+        # Round-tripping through exc.json() guarantees a serializable structure.
+        raise HTTPException(status_code=422, detail=json.loads(exc.json())) from exc
+
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _write_status(job_dir, {
+        "status": "pending",
+        "created_at": created_at,
+        "updated_at": created_at,
+    })
+
+    background_tasks.add_task(
+        _evaluation_task, run_config, job_dir, job_id, tmp_model_path, tmp_dataset_path,
+    )
+
+    return EvaluationCreateResponse(job_id=job_id, status="pending")
 
 
 @app.get(
@@ -114,7 +230,19 @@ async def get_evaluation_status(job_id: str) -> JobStatusResponse:
     Raises:
         HTTPException 404: If the job_id is unknown.
     """
-    raise NotImplementedError
+    data = _read_status(job_id)
+    updated_at = (
+        data.get("completed_at")
+        or data.get("updated_at")
+        or data["created_at"]
+    )
+    return JobStatusResponse(
+        job_id=job_id,
+        status=data["status"],
+        created_at=data["created_at"],
+        updated_at=updated_at,
+        error=data.get("error"),
+    )
 
 
 @app.get(
@@ -132,10 +260,17 @@ async def get_evaluation_metrics(job_id: str) -> dict[str, Any]:
 
     Raises:
         HTTPException 404: Job not found.
-        HTTPException 409: Job not yet complete; body contains
-            {"job_id": ..., "status": "running"|"pending"}.
+        HTTPException 409: Job not yet complete; detail has shape
+            {"job_id": ..., "status": "pending"|"running"|"error"}.
     """
-    raise NotImplementedError
+    data = _read_status(job_id)
+    if data["status"] != "ok":
+        raise HTTPException(
+            status_code=409,
+            detail={"job_id": job_id, "status": data["status"]},
+        )
+    metrics_path = RUNS_DIR / job_id / "metrics_user.json"
+    return json.loads(metrics_path.read_text(encoding="utf-8"))
 
 
 @app.get(
@@ -154,7 +289,14 @@ async def get_evaluation_report(job_id: str) -> str:
 
     Raises:
         HTTPException 404: Job not found.
-        HTTPException 409: Job not yet complete; body contains
-            {"job_id": ..., "status": "running"|"pending"}.
+        HTTPException 409: Job not yet complete; detail has shape
+            {"job_id": ..., "status": "pending"|"running"|"error"}.
     """
-    raise NotImplementedError
+    data = _read_status(job_id)
+    if data["status"] != "ok":
+        raise HTTPException(
+            status_code=409,
+            detail={"job_id": job_id, "status": data["status"]},
+        )
+    report_path = RUNS_DIR / job_id / "report.html"
+    return report_path.read_text(encoding="utf-8")

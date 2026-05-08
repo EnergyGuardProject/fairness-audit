@@ -32,8 +32,8 @@ runs/
 
 `job_id` format: `YYYYMMDD_HHMMSS_<8-char hex uuid>`.
 
-The API additionally holds job status in an in-memory dict (sufficient for v1 — no
-persistence required). A job-state file (`state.json`) may be added in v1.1.
+The API persists job state in `status.json` inside the job directory. This file is
+readable by the CLI path as well, so both entry points share the same status format.
 
 ---
 
@@ -78,8 +78,14 @@ POST /api/evaluations  (multipart/form-data)
   8. Return 202 { job_id, status: "pending" }
 ```
 
-409 responses include `{ "job_id": ..., "status": "running"|"pending" }` so the
-frontend can update its local state without a second status call.
+409 responses are raised via FastAPI's `HTTPException`. The body FastAPI produces is:
+
+```json
+{ "detail": { "job_id": "<job_id>", "status": "pending" | "running" | "error" } }
+```
+
+Clients must read `response.json()["detail"]` (not the top-level body) to get the
+job state. This lets the frontend skip a redundant GET /status call.
 
 ---
 
