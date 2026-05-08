@@ -48,14 +48,14 @@ COUNTRIES = ["IT", "ES", "PT", "LV"]
 COUNTRY_WEIGHTS = [0.35, 0.30, 0.20, 0.15]
 
 # Energy cost multipliers per country (LV and PT structurally higher)
-COUNTRY_ENERGY_MULTIPLIER = {"IT": 1.00, "ES": 0.95, "PT": 1.12, "LV": 1.20}
+COUNTRY_ENERGY_MULTIPLIER = {"IT": 0.90, "ES": 0.95, "PT": 1.20, "LV": 1.35}
 
 URBAN_RURAL = ["urban", "suburban", "rural"]
 URBAN_RURAL_WEIGHTS = [0.45, 0.35, 0.20]
 
 AGE_BANDS = ["<35", "35-65", ">65"]
 AGE_BAND_WEIGHTS = [0.25, 0.55, 0.20]
-AGE_ENERGY_MULTIPLIER = {"<35": 0.95, "35-65": 1.00, ">65": 1.10}
+AGE_ENERGY_MULTIPLIER = {"<35": 0.85, "35-65": 1.00, ">65": 1.25}
 
 DWELLING_TYPES = ["apartment", "house", "other"]
 DWELLING_TYPE_WEIGHTS = [0.55, 0.35, 0.10]
