@@ -43,7 +43,7 @@ packages = ["fairness-backend/runner", "fairness-backend/app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Allows `import runner` and `import app` without installing
-pythonpath = ["fairness-backend"]
+pythonpath = ["fairness-backend", "."]
 asyncio_mode = "auto"
 
 [tool.ruff]

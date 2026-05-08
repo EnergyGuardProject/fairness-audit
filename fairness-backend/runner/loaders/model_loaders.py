@@ -26,4 +26,13 @@ def load_sklearn_model(path: Path) -> ModelAdapter:
         FileNotFoundError: If path does not exist.
         ValueError: If the file cannot be deserialised as a sklearn model.
     """
-    raise NotImplementedError
+    import joblib  # type: ignore[import-untyped]
+
+    if not path.exists():
+        raise FileNotFoundError(f"Model file not found: {path}")
+    try:
+        model = joblib.load(path)
+    except Exception as exc:
+        raise ValueError(f"Cannot deserialise model from {path}: {exc}") from exc
+    logger.info("Loaded sklearn model from %s (type: %s)", path, type(model).__name__)
+    return ModelAdapter(model)

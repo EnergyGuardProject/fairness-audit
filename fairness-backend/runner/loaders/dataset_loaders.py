@@ -49,4 +49,31 @@ def load_csv_dataset(config: DatasetConfig, sensitive_features: list[str]) -> Lo
         FileNotFoundError: If the CSV file does not exist.
         KeyError: If target_column or any sensitive feature column is absent.
     """
-    raise NotImplementedError
+    path = Path(config.path)
+    if not path.exists():
+        raise FileNotFoundError(f"Dataset file not found: {path}")
+
+    df = pd.read_csv(path)
+
+    if config.target_column not in df.columns:
+        raise KeyError(
+            f"Target column '{config.target_column}' not found in CSV. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    missing_sf = [col for col in sensitive_features if col not in df.columns]
+    if missing_sf:
+        raise KeyError(
+            f"Sensitive feature columns not found in CSV: {missing_sf}. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    y_true = df[config.target_column]
+    X = df.drop(columns=[config.target_column])
+    sensitive = df[sensitive_features].copy()
+
+    logger.info(
+        "Loaded dataset from %s: %d rows, %d feature columns",
+        path, len(df), len(X.columns),
+    )
+    return LoadedDataset(X=X, y_true=y_true, sensitive=sensitive, df_full=df)

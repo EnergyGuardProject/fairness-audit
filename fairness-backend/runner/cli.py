@@ -20,6 +20,11 @@ app = typer.Typer(
 logger = logging.getLogger(__name__)
 
 
+@app.callback()
+def _callback() -> None:
+    """EnergyGuard Fairness Audit CLI."""
+
+
 @app.command("run")
 def run_command(
     config: Path = typer.Option(

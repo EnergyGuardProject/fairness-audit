@@ -58,7 +58,7 @@ class ModelAdapter:
         Returns:
             1-D numpy array of predicted class labels.
         """
-        raise NotImplementedError
+        return np.asarray(self._model.predict(X))
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray | None:  # type: ignore[type-arg]
         """Generate probability predictions if the model supports them.
@@ -70,4 +70,6 @@ class ModelAdapter:
             2-D numpy array of shape (n_samples, n_classes), or None if the
             model does not have a `predict_proba` method.
         """
-        raise NotImplementedError
+        if not hasattr(self._model, "predict_proba"):
+            return None
+        return np.asarray(self._model.predict_proba(X))
