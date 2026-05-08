@@ -12,6 +12,23 @@ baseline LogisticRegression trained on the data will fail the fairness audit:
 Usage:
     python examples/scripts/generate_synthetic_energy_burden.py
 """
+# NOTE on disparity calibration (v1):
+# The current per-decile spend multipliers are deliberately strong
+# (approx 2.2x for decile 1 down to 0.70x for decile 10) to produce a
+# clear, unambiguous disparity signal in the smoke test. This
+# results in burden rates of ~95% for decile 1 and ~0% for deciles
+# 8-10, which is more extreme than real-world energy-poverty
+# surveys (e.g., EU-SILC typically shows decile 1 ~30-50%,
+# decile 10 ~3-10%).
+#
+# The extreme disparity is acceptable for v1 because:
+#   - The smoke test asserts specific FAIL statuses on fairness
+#     metrics; subtle disparity would make assertions flaky.
+#   - It exercises edge cases (groups with 0 positive examples,
+#     near-zero selection rates) that the engine must handle.
+#
+# In v1.1, recalibrate to realistic ranges once the engine and
+# report layer are stable. Target: decile 1 ~50%, decile 10 ~5%.
 from __future__ import annotations
 
 import logging
