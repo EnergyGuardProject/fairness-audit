@@ -19,8 +19,6 @@ Key design decisions:
 from __future__ import annotations
 
 import logging
-import math
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -342,26 +340,3 @@ class FairnessEngine:
                     f"(n_classes == 2) but n_classes={n_classes}: {bad}"
                 )
 
-    def _build_metric_functions(self) -> dict[str, Any]:
-        """Return a dict of metric_name -> callable suitable for MetricFrame.
-
-        Returns:
-            Dict mapping metric key strings to callables with signature
-            (y_true, y_pred) -> float.
-        """
-        from sklearn.metrics import accuracy_score
-
-        from runner.metrics.classification import (
-            safe_false_negative_rate,
-            safe_false_positive_rate,
-            safe_true_positive_rate,
-            selection_rate,
-        )
-
-        return {
-            "accuracy": accuracy_score,
-            "selection_rate": selection_rate,
-            "true_positive_rate": safe_true_positive_rate,
-            "false_positive_rate": safe_false_positive_rate,
-            "false_negative_rate": safe_false_negative_rate,
-        }

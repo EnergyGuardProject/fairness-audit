@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Literal
 
 import yaml
 from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile
@@ -16,11 +15,15 @@ from pydantic import BaseModel, ValidationError
 
 from runner.config.models import RunConfig
 from runner.pipeline import run_evaluation
+from runner.utils import generate_job_id, write_status
 
 logger = logging.getLogger(__name__)
 
 RUNS_DIR = Path("runs")
 TMP_DIR = Path("tmp_uploads")
+
+# Reject uploads larger than 500 MB to prevent OOM on the container.
+_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 
 
 @asynccontextmanager
@@ -42,20 +45,6 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-
-
-def _generate_job_id() -> str:
-    # Intentionally duplicated from runner/pipeline.py.
-    # Extract to runner/utils.py if a third caller appears.
-    now = datetime.now(timezone.utc)
-    return f"{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
-
-
-def _write_status(job_dir: Path, payload: dict[str, Any]) -> None:
-    (job_dir / "status.json").write_text(
-        json.dumps(payload, sort_keys=True),
-        encoding="utf-8",
-    )
 
 
 def _read_status(job_id: str) -> dict[str, Any]:
@@ -82,14 +71,14 @@ class EvaluationCreateResponse(BaseModel):
     """Returned immediately after a job is accepted (HTTP 202)."""
 
     job_id: str
-    status: str  # always "pending"
+    status: Literal["pending"]
 
 
 class JobStatusResponse(BaseModel):
     """Current status of an evaluation job."""
 
     job_id: str
-    status: str  # pending | running | ok | error
+    status: Literal["pending", "running", "ok", "error"]
     created_at: str
     updated_at: str
     error: str | None = None
@@ -99,7 +88,7 @@ class JobConflictResponse(BaseModel):
     """409 detail body — lets the frontend skip a redundant status call."""
 
     job_id: str
-    status: str  # pending | running
+    status: Literal["pending", "running", "error"]
 
 
 # ── Background task ────────────────────────────────────────────────────────────
@@ -162,8 +151,8 @@ async def create_evaluation(
 
     Args:
         background_tasks: FastAPI BackgroundTasks injected by the framework.
-        model_file: Trained sklearn Pipeline (.joblib).
-        dataset_file: Tabular dataset (.csv).
+        model_file: Trained sklearn Pipeline (.joblib). Max 500 MB.
+        dataset_file: Tabular dataset (.csv). Max 500 MB.
         config: YAML RunConfig. model.path and dataset.path are ignored —
             the uploaded file paths are injected automatically.
 
@@ -172,19 +161,28 @@ async def create_evaluation(
 
     Raises:
         HTTPException 400: If the YAML config cannot be parsed.
+        HTTPException 413: If any uploaded file exceeds 500 MB.
         HTTPException 422: If the merged RunConfig fails Pydantic validation.
     """
-    job_id = _generate_job_id()
+    job_id = generate_job_id()
     job_dir = RUNS_DIR / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
     tmp_job_dir = TMP_DIR / job_id
     tmp_job_dir.mkdir(parents=True, exist_ok=True)
 
+    model_bytes = await model_file.read()
+    if len(model_bytes) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="model_file exceeds 500 MB limit")
+
+    dataset_bytes = await dataset_file.read()
+    if len(dataset_bytes) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="dataset_file exceeds 500 MB limit")
+
     tmp_model_path = tmp_job_dir / (model_file.filename or "model.joblib")
     tmp_dataset_path = tmp_job_dir / (dataset_file.filename or "dataset.csv")
-    tmp_model_path.write_bytes(await model_file.read())
-    tmp_dataset_path.write_bytes(await dataset_file.read())
+    tmp_model_path.write_bytes(model_bytes)
+    tmp_dataset_path.write_bytes(dataset_bytes)
 
     config_bytes = await config.read()
     try:
@@ -206,7 +204,7 @@ async def create_evaluation(
         raise HTTPException(status_code=422, detail=json.loads(exc.json())) from exc
 
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    _write_status(job_dir, {
+    write_status(job_dir, {
         "status": "pending",
         "created_at": created_at,
         "updated_at": created_at,
@@ -253,6 +251,7 @@ async def get_evaluation_status(job_id: str) -> JobStatusResponse:
 
 @app.get(
     "/api/evaluations/{job_id}/metrics",
+    responses={409: {"model": JobConflictResponse}},
     summary="Get metrics_user.json payload for a completed evaluation",
 )
 async def get_evaluation_metrics(job_id: str) -> dict[str, Any]:
@@ -282,6 +281,7 @@ async def get_evaluation_metrics(job_id: str) -> dict[str, Any]:
 @app.get(
     "/api/evaluations/{job_id}/report",
     response_class=HTMLResponse,
+    responses={409: {"model": JobConflictResponse}},
     summary="Get the self-contained HTML report for a completed evaluation",
 )
 async def get_evaluation_report(job_id: str) -> str:

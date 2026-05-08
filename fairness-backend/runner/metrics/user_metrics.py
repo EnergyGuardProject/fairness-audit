@@ -6,10 +6,16 @@ Scoring rubric (documented in docs/FAIRNESS_METRICS.md):
     pass → 1.0, warn → 0.5, fail → 0.0
     headline_score = mean(scores for primary metrics)
     headline_label: good (all pass) | moderate (warn only) | poor (any fail)
+
+Subgroup accuracy-gap thresholds (see _SUBGROUP_WARN_GAP / _SUBGROUP_FAIL_GAP):
+    These are independent of the primary metric thresholds in thresholds.py.
+    They apply to per-group accuracy deviation from the overall accuracy,
+    surfaced in subgroup_breakdown[].status.
 """
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, Literal
 
 from runner.config.models import RunConfig
@@ -19,6 +25,12 @@ from runner.metrics.thresholds import DEFAULT_THRESHOLDS, evaluate_metric, resol
 logger = logging.getLogger(__name__)
 
 _STATUS_SCORE: dict[str, float] = {"pass": 1.0, "warn": 0.5, "fail": 0.0}
+
+# Per-group accuracy gap thresholds for subgroup_breakdown[].status.
+# A group whose accuracy deviates from the overall accuracy by more than
+# _SUBGROUP_FAIL_GAP is flagged "fail"; more than _SUBGROUP_WARN_GAP is "warn".
+_SUBGROUP_WARN_GAP: float = 0.05
+_SUBGROUP_FAIL_GAP: float = 0.10
 
 # Metrics that appear in summary.primary_metrics with pass/warn/fail status.
 THRESHOLDED_METRICS = frozenset({
@@ -205,9 +217,9 @@ def build_metrics_user(
     for group_key in sorted(result.by_group.keys()):
         gm = result.by_group[group_key]
         gap = abs(gm.accuracy - result.overall_accuracy)
-        if gap > 0.10:
+        if gap > _SUBGROUP_FAIL_GAP:
             g_status: str = "fail"
-        elif gap > 0.05:
+        elif gap > _SUBGROUP_WARN_GAP:
             g_status = "warn"
         else:
             g_status = "pass"
@@ -291,7 +303,7 @@ def build_metrics_user(
             "model_backend": config.model.backend,
             "mlflow_run_id": None,
             "mlflow_tracking_uri": None,
-            "dataset_uri": config.dataset.path,
+            "dataset_uri": Path(config.dataset.path).name,
             "feature_count": feature_count,
             "sample_count": result.n_samples,
             "samples_evaluated": result.n_samples,

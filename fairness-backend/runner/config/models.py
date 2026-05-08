@@ -12,6 +12,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+# Extend this set in v1.1 when precision/recall support lands.
+# Using a frozenset + validator instead of Literal["accuracy"] avoids a
+# breaking schema change when new base metrics are added.
+_ALLOWED_BASE_METRICS: frozenset[str] = frozenset({"accuracy"})
+
 
 class FairnessMetric(StrEnum):
     """Supported fairness metrics.
@@ -74,9 +79,12 @@ class FairnessConfig(BaseModel):
             "automatically (see docs/FAIRNESS_METRICS.md)."
         ),
     )
-    base_metric: Literal["accuracy"] = Field(
+    base_metric: str = Field(
         "accuracy",
-        description="Base performance metric used in the primary chart and subgroup breakdown.",
+        description=(
+            "Base performance metric used in the primary chart and subgroup breakdown. "
+            f"Allowed values: {sorted(_ALLOWED_BASE_METRICS)}. Extended in v1.1."
+        ),
     )
     intersectional: bool = Field(
         False,
@@ -150,6 +158,26 @@ class FairnessConfig(BaseModel):
         """
         if not v:
             raise ValueError("fairness_metrics must contain at least one metric")
+        return v
+
+    @field_validator("base_metric")
+    @classmethod
+    def validate_base_metric(cls, v: str) -> str:
+        """Validate that base_metric is one of the supported values.
+
+        Args:
+            v: The raw base_metric string.
+
+        Returns:
+            Validated base_metric.
+
+        Raises:
+            ValueError: If v is not in _ALLOWED_BASE_METRICS.
+        """
+        if v not in _ALLOWED_BASE_METRICS:
+            raise ValueError(
+                f"base_metric must be one of {sorted(_ALLOWED_BASE_METRICS)}, got {v!r}"
+            )
         return v
 
 

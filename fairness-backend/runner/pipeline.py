@@ -39,7 +39,6 @@ import importlib.metadata
 import json
 import logging
 import subprocess
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -47,6 +46,7 @@ from typing import Any
 import yaml
 
 from runner.config.models import RunConfig
+from runner.utils import generate_job_id, write_status
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ def run(
             requested metrics are incompatible with the task type.
     """
     config = _load_config(config_path)
-    job_id = job_id_override or _generate_job_id()
+    job_id = job_id_override or generate_job_id()
     job_dir = Path(output_root) / job_id
     job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -144,7 +144,7 @@ def run_evaluation(
     )
 
     # 2. Write running status
-    _write_status(job_dir, {"status": "running", "created_at": created_at})
+    write_status(job_dir, {"status": "running", "created_at": created_at})
 
     try:
         # 3. Load model and dataset
@@ -155,8 +155,8 @@ def run_evaluation(
         dataset = load_csv_dataset(config.dataset, config.fairness.sensitive_features)
 
         # 4. Compute predictions
-        logger.info("Running predictions on %d samples", len(dataset.X))
-        y_pred_arr = adapter.predict(dataset.X)
+        logger.info("Running predictions on %d samples", len(dataset.features))
+        y_pred_arr = adapter.predict(dataset.features)
         y_pred = pd.Series(y_pred_arr, index=dataset.y_true.index)
 
         # 5. Infer n_classes
@@ -188,6 +188,7 @@ def run_evaluation(
                 ["git", "rev-parse", "HEAD"],
                 text=True,
                 stderr=subprocess.DEVNULL,
+                timeout=2,
             ).strip()
         except Exception:
             git_sha = None
@@ -202,7 +203,7 @@ def run_evaluation(
             "pandas_version": importlib.metadata.version("pandas"),
             "config_hash": config_hash,
             "git_sha": git_sha,
-            "feature_count": len(dataset.X.columns),
+            "feature_count": len(dataset.features.columns),
         }
 
         # 8. Write metrics.json (firehose)
@@ -221,7 +222,7 @@ def run_evaluation(
 
         # 11. Write OK status
         completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _write_status(job_dir, {
+        write_status(job_dir, {
             "status": "ok",
             "created_at": created_at,
             "completed_at": completed_at,
@@ -229,28 +230,15 @@ def run_evaluation(
         logger.info("Job %s completed successfully", job_id)
 
     except Exception as exc:
-        logger.error("Job %s failed: %s", exc, exc_info=True)
+        logger.error("Job %s failed: %s", job_id, exc, exc_info=True)
         completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _write_status(job_dir, {
+        write_status(job_dir, {
             "status": "error",
             "error": str(exc),
             "created_at": created_at,
             "completed_at": completed_at,
         })
         raise
-
-
-def _write_status(job_dir: Path, payload: dict[str, Any]) -> None:
-    """Write status.json to job_dir.
-
-    Args:
-        job_dir: Job output directory.
-        payload: Status dict to serialise.
-    """
-    (job_dir / "status.json").write_text(
-        json.dumps(payload, sort_keys=True),
-        encoding="utf-8",
-    )
 
 
 def _load_config(config_path: Path) -> RunConfig:
@@ -271,16 +259,6 @@ def _load_config(config_path: Path) -> RunConfig:
     text = config_path.read_text(encoding="utf-8")
     raw = yaml.safe_load(text)
     return RunConfig.model_validate(raw)
-
-
-def _generate_job_id() -> str:
-    """Generate a time-stamped job identifier.
-
-    Returns:
-        String of the form YYYYMMDD_HHMMSS_<8-char hex>.
-    """
-    now = datetime.now(timezone.utc)
-    return f"{now.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
 
 def _setup_job_logger(job_dir: Path) -> logging.FileHandler:
