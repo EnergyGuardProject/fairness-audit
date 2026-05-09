@@ -36,5 +36,3 @@ services:
       - ./mlflow_store:/mlflow
     restart: unless-stopped
 
-volumes:
-  {}

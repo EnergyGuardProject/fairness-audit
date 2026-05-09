@@ -32,8 +32,6 @@ def write_metrics_json(
         path: Destination file path (written via write_text).
 
     Raises:
-        ValueError: If the serialised payload fails its own JSON round-trip
-            (catches non-serialisable values before touching disk).
         OSError: If path cannot be written.
     """
     payload = result.model_dump()
@@ -44,15 +42,9 @@ def write_metrics_json(
 
     payload["provenance"] = provenance
 
+    # default=str ensures any residual non-serialisable values (e.g. numpy
+    # scalars not caught by model_dump) are coerced to strings rather than
+    # raising TypeError.
     raw = json.dumps(payload, sort_keys=True, default=str)
-
-    # Round-trip check — catches non-serialisable values with a clear traceback
-    try:
-        json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"metrics.json failed JSON round-trip check: {exc}"
-        ) from exc
-
     path.write_text(raw, encoding="utf-8")
     logger.info("Written metrics.json to %s (%d bytes)", path, len(raw))

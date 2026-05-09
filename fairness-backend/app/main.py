@@ -182,8 +182,10 @@ async def create_evaluation(
     tmp_job_dir = TMP_DIR / job_id
     tmp_job_dir.mkdir(parents=True, exist_ok=True)
 
-    tmp_model_path = tmp_job_dir / (model_file.filename or "model.joblib")
-    tmp_dataset_path = tmp_job_dir / (dataset_file.filename or "dataset.csv")
+    # Use Path(...).name to strip any directory components from the client-
+    # supplied filename and prevent path traversal out of tmp_job_dir.
+    tmp_model_path = tmp_job_dir / (Path(model_file.filename or "model.joblib").name)
+    tmp_dataset_path = tmp_job_dir / (Path(dataset_file.filename or "dataset.csv").name)
     tmp_model_path.write_bytes(model_bytes)
     tmp_dataset_path.write_bytes(dataset_bytes)
 

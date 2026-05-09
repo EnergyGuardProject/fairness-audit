@@ -1,8 +1,11 @@
 """Classification-specific fairness metric functions.
 
-These are passed to Fairlearn's MetricFrame as the `metrics` argument.
-Each function has the signature (y_true, y_pred) -> float and is suitable
-for per-group evaluation by MetricFrame.
+Standalone NumPy implementations of per-group metric functions.
+
+In v1 these are not wired to Fairlearn's MetricFrame — the engine computes
+all metrics inline.  They are retained here as tested building blocks for
+the planned v1.1 refactor that will pass them to MetricFrame.  Each function
+has the (y_true, y_pred) -> float signature expected by MetricFrame.
 
 selection_rate_ratio is computed post-hoc from per-group selection rates
 (it is not a MetricFrame metric function).

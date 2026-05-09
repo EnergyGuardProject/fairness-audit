@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build. Build context must be the repo root.
 # Build:  docker build -t energyguard/fairness-audit:dev .
-# Run:    docker run -p 8080:8000 energyguard/fairness-audit:dev
+# Run:    docker run -p 9006:9006 energyguard/fairness-audit:dev
 
 # ── Stage 1: install Python dependencies ──────────────────────────────────────
 FROM python:3.11-slim AS build
