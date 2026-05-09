@@ -6,6 +6,7 @@ Add a third caller before creating a new module; keep this file small.
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,13 +24,16 @@ def generate_job_id() -> str:
 
 
 def write_status(job_dir: Path, payload: dict[str, Any]) -> None:
-    """Write status.json to job_dir atomically (overwrite if exists).
+    """Write status.json to job_dir, replacing any existing file atomically.
+
+    Uses a write-to-temp-then-rename strategy so a crash mid-write cannot
+    leave a partial/corrupt status.json behind.
 
     Args:
-        job_dir: Job output directory.
+        job_dir: Job output directory (must already exist).
         payload: Status dict to serialise as JSON.
     """
-    (job_dir / "status.json").write_text(
-        json.dumps(payload, sort_keys=True),
-        encoding="utf-8",
-    )
+    target = job_dir / "status.json"
+    tmp = job_dir / "status.json.tmp"
+    tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, target)

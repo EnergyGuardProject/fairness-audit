@@ -74,7 +74,13 @@ class FairnessResult(BaseModel):
 
 
 class FairnessEngine:
-    """Wraps Fairlearn MetricFrame for fairness metric computation."""
+    """Compute group fairness metrics for a classification evaluation.
+
+    Metrics are computed directly with NumPy (no Fairlearn MetricFrame
+    dependency at runtime).  Sensitive features are iterated individually;
+    when ``config.intersectional=True`` they are first combined into a single
+    cross-product label column.
+    """
 
     def __init__(self, config: FairnessConfig) -> None:
         """Store config and build internal metric function registry.

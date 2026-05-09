@@ -165,12 +165,9 @@ async def create_evaluation(
         HTTPException 422: If the merged RunConfig fails Pydantic validation.
     """
     job_id = generate_job_id()
-    job_dir = RUNS_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
 
-    tmp_job_dir = TMP_DIR / job_id
-    tmp_job_dir.mkdir(parents=True, exist_ok=True)
-
+    # Read and validate upload sizes BEFORE creating any directories so that
+    # a 413 rejection never leaves orphaned empty dirs on disk.
     model_bytes = await model_file.read()
     if len(model_bytes) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="model_file exceeds 500 MB limit")
@@ -178,6 +175,12 @@ async def create_evaluation(
     dataset_bytes = await dataset_file.read()
     if len(dataset_bytes) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="dataset_file exceeds 500 MB limit")
+
+    job_dir = RUNS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_job_dir = TMP_DIR / job_id
+    tmp_job_dir.mkdir(parents=True, exist_ok=True)
 
     tmp_model_path = tmp_job_dir / (model_file.filename or "model.joblib")
     tmp_dataset_path = tmp_job_dir / (dataset_file.filename or "dataset.csv")
