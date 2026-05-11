@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import plotly.graph_objects as go  # type: ignore[import-untyped]
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from runner.config.models import RunConfig
 from runner.engine import FairnessResult
@@ -75,9 +75,12 @@ def render_html_report(
     primary_chart_spec = charts.get("primary_chart") or {}
     secondary_chart_spec = charts.get("secondary_chart") or {}
 
+    # Auto-escape all template variables (e.g. run_name, group labels from CSV
+    # cells, warning messages). Pre-built Plotly chart fragments are passed
+    # through with the explicit `| safe` filter inside the template.
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATE_DIR)),
-        autoescape=False,
+        autoescape=select_autoescape(enabled_extensions=("html", "html.j2", "j2")),
     )
     template = env.get_template("report.html.j2")
 

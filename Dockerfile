@@ -28,12 +28,19 @@ COPY --from=build /usr/local/lib/python3.11/site-packages \
                   /usr/local/lib/python3.11/site-packages
 COPY --from=build /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 
+# Create a non-root user so a malicious uploaded model (joblib uses pickle =
+# arbitrary code execution) cannot trivially escalate to container-root.
+RUN groupadd --system --gid 1001 fairness \
+ && useradd  --system --uid 1001 --gid fairness --create-home fairness
+
 # Job output and temp upload directories
-RUN mkdir -p /app/runs /app/tmp_uploads
+RUN mkdir -p /app/runs /app/tmp_uploads \
+ && chown -R fairness:fairness /app
 
 VOLUME /app/runs
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 9006
 
+USER fairness
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9006"]

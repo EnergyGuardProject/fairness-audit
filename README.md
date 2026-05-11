@@ -1,13 +1,18 @@
 # EnergyGuard Fairness Audit Service
 
-Fairness diagnostic microservice for the [EnergyGuard](https://energyguard.eu) project
-(Horizon Europe GA 101172705). Part of **T5.2 — Trustworthy AI Acceptance Environment**
-under WP5.
+Fairness diagnostic microservice for the EnergyGuard project
+([Horizon Europe GA 101172705](https://cordis.europa.eu/project/id/101172705)).
+Part of **T5.2 — Trustworthy AI Acceptance Environment** under WP5.
 
 Accepts a trained scikit-learn classification model, a CSV dataset, and a list of
 sensitive feature column names. Computes group fairness metrics and produces a
 machine-readable JSON report plus a self-contained HTML report. **Diagnostic only —
 no mitigation or retraining in v1.**
+
+> ⚠️ **Trust model:** v1 has no authentication. The service deserialises uploaded
+> `.joblib` models with `joblib.load` (= `pickle` = arbitrary code execution).
+> Run only on a trusted network behind an authenticating gateway.
+> See [`SECURITY.md`](SECURITY.md) for details.
 
 ---
 
