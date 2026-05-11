@@ -1,7 +1,7 @@
 # EnergyGuard Fairness Audit — Metrics Reference
 
-All metrics are computed via Fairlearn's `MetricFrame`. This document defines every
-metric, its threshold boundaries, and the headline scoring rubric.
+All metrics are computed group-by-group with NumPy in `runner/engine.py`. This document
+defines every metric, its threshold boundaries, and the headline scoring rubric.
 
 ---
 
@@ -140,13 +140,9 @@ begins.
 
 ## Intersectional Mode
 
-When `fairness.intersectional: true`, MetricFrame receives sensitive features as a
-DataFrame, producing groups for all cross-product combinations (e.g., `income_decile=1,
-country=LV`). This can produce many groups; only the top two features by accuracy
-range are shown in the tertiary heatmap chart when ≥ 3 features are present.
-
-A `HEATMAP_FEATURE_SELECTION` info-level warning is emitted in the report naming the
-selected and omitted features.
+When `fairness.intersectional: true`, sensitive features are combined into a single
+cross-product label column before grouping (e.g., `income_decile=1,country=LV`).
+This can produce many groups; the tertiary heatmap chart is deferred to v1.1.
 
 Intersectional mode is **off by default** (`intersectional: false`) because small
 intersectional groups produce unstable metric estimates.
